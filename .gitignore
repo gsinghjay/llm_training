@@ -1,3 +1,7 @@
 venv
 *cache*
 checkpoints
+.env
+accepted_training_data.txt
+batch_analysis_report.txt
+training_data.db
