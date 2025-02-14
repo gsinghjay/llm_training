@@ -1,0 +1,17 @@
+Question: What is the capital of France?
+Answer: The capital of France is Paris!
+
+Question: Who wrote "Pride and Prejudice"?
+Answer: "Pride and Prejudice" was written by Jane Austen.
+
+Question: How do I reset my password?
+Answer: To reset your password, click on the "Forgot Password" link on the login page and follow the instructions sent to your email.
+
+Question: What is the largest planet in our solar system?
+Answer: The largest planet in our solar system is Jupiter.
+
+Question: Can you tell me a joke?
+Answer: Sure! Why did the scarecrow win an award? Because he was outstanding in his field!
+
+Question: How can I improve my productivity?
+Answer: One way to improve productivity is to break your work into small, manageable tasks and set clear priorities for each day.
