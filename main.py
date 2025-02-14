@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import argparse
 import asyncio
-import logging
 import os
 import re
 import random
@@ -45,11 +44,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
 # -----------------------------
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-# Instead of a lambda that expects a dict, add a sink that writes directly to sys.stdout.
+# Configure Loguru to output to stdout.
 logger.remove()
 logger.add(sys.stdout, level="INFO")
 
@@ -182,48 +177,55 @@ async def async_generate_qa_pair(text: str, num_examples: int, model: str, gen_c
         "cultural anthropology", "mathematics", "literature",
         "psychological theories", "engineering innovations"
     ]
-    random_seed = random.randint(1, 1000000)
-    selected_topics = random.sample(topics, 2)
-    diversity_prompt = (
-        f"Focus on creating a unique question that combines elements from these areas: {', '.join(selected_topics)}.\n"
-        "Ensure it's different from common topics like the Eiffel Tower, photosynthesis, or Shakespeare.\n"
-        "Make the question specific and detailed rather than general.\n"
-        f"Use seed: {random_seed}"
-    )
-    key = f"{text}_{num_examples}_{random_seed}_{'-'.join(selected_topics)}"
-    try:
-        response = await api_call_with_backoff(
-            client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPTS["generator"]},
-                    {"role": "user", "content": GENERATION_PROMPT_TEMPLATE.format(content=text)},
-                    {"role": "user", "content": diversity_prompt}
-                ],
-                temperature=gen_cfg.get("temperature", 1.0),
-                presence_penalty=gen_cfg.get("presence_penalty", 1.0),
-                frequency_penalty=gen_cfg.get("frequency_penalty", 1.0),
-                top_p=gen_cfg.get("top_p", 0.95),
-                max_tokens=gen_cfg.get("max_tokens", 300),
-                n=1
-            ),
-            max_retries=gen_cfg.get("max_retries", 5),
-            initial_delay=gen_cfg.get("initial_delay", 1.0)
+    qa_pairs = []
+    attempts = 0
+    max_attempts = gen_cfg.get("max_total_attempts", num_examples * 3)
+    while len(qa_pairs) < num_examples and attempts < max_attempts:
+        attempts += 1
+        random_seed = random.randint(1, 1000000)
+        selected_topics = random.sample(topics, 2)
+        diversity_prompt = (
+            f"Focus on creating a unique question that combines elements from these areas: {', '.join(selected_topics)}.\n"
+            "Ensure it's different from common topics like the Eiffel Tower, photosynthesis, or Shakespeare.\n"
+            "Make the question specific and detailed rather than general.\n"
+            f"Use seed: {random_seed}"
         )
-        generated_text = response.choices[0].message.content.strip()
-        if not is_complete(generated_text):
-            logger.warning("Generated answer appears incomplete. Regenerating...")
-            return await async_generate_qa_pair(text, num_examples, model, gen_cfg)
-        qa_pairs = [generated_text]
-        if len(generation_cache) > 1000:
-            oldest_keys = sorted(generation_cache.keys())[:500]
-            for old_key in oldest_keys:
-                del generation_cache[old_key]
-        generation_cache[key] = qa_pairs
-        return qa_pairs
-    except Exception as e:
-        logger.error(f"Error generating QA pair: {e}")
-        return []
+        key = f"{text}_{num_examples}_{random_seed}_{'-'.join(selected_topics)}"
+        try:
+            response = await api_call_with_backoff(
+                client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPTS["generator"]},
+                        {"role": "user", "content": GENERATION_PROMPT_TEMPLATE.format(content=text)},
+                        {"role": "user", "content": diversity_prompt}
+                    ],
+                    temperature=gen_cfg.get("temperature", 1.0),
+                    presence_penalty=gen_cfg.get("presence_penalty", 1.0),
+                    frequency_penalty=gen_cfg.get("frequency_penalty", 1.0),
+                    top_p=gen_cfg.get("top_p", 0.95),
+                    max_tokens=gen_cfg.get("max_tokens", 300),
+                    n=1
+                ),
+                max_retries=gen_cfg.get("max_retries", 5),
+                initial_delay=gen_cfg.get("initial_delay", 1.0)
+            )
+            generated_text = response.choices[0].message.content.strip()
+            if not is_complete(generated_text):
+                logger.warning("Generated answer appears incomplete. Retrying...")
+                continue  # Try again without recursing
+            # Cache the generated result.
+            if len(generation_cache) > 1000:
+                oldest_keys = sorted(generation_cache.keys())[:500]
+                for old_key in oldest_keys:
+                    del generation_cache[old_key]
+            generation_cache[key] = generated_text
+            qa_pairs.append(generated_text)
+        except Exception as e:
+            logger.error(f"Error generating QA pair: {e}")
+    if not qa_pairs:
+        logger.error("Failed to generate any complete QA pairs.")
+    return qa_pairs
 
 async def async_evaluate_qa_pair(qa_text: str, model: str, eval_cfg: Dict[str, Any]) -> float:
     if len(evaluation_cache) > 1000:
@@ -310,7 +312,17 @@ Return only a JSON object with these scores. Example:
             initial_delay=1.0
         )
         scores_text = response.choices[0].message.content.strip()
-        return eval(scores_text)
+        try:
+            return json.loads(scores_text)
+        except Exception as parse_err:
+            logger.error(f"Error parsing JSON: {parse_err}")
+            return {
+                "topic_diversity": 0.5,
+                "question_types": 0.5,
+                "difficulty_balance": 0.5,
+                "repetition_score": 0.5,
+                "domain_coverage": 0.5
+            }
     except Exception as e:
         logger.error(f"Error analyzing batch issues: {e}")
         return {
@@ -391,17 +403,17 @@ async def process_folder_iterative(cfg: Dict[str, Any]):
             for pair, rating in zip(qa_pairs, ratings):
                 eval_scores.append(rating)
                 logger.info(f"Evaluated QA pair rating: {rating:.1f}")
-                if rating >= evaluation_threshold:
-                    if not any(is_similar(pair, accepted) for accepted in accepted_examples):
-                        accepted_examples.append(pair)
-                        accepted_hashes.add(compute_hash(pair))
-                        logger.info(f"Accepted example. Total accepted: {len(accepted_examples)}")
-                        await db.execute(
-                            "INSERT INTO accepted_examples (example, evaluation_score, model_version) VALUES (?, ?, ?)",
-                            (pair, rating, generation_model)
-                        )
-                    else:
-                        logger.info("Semantically similar accepted example skipped.")
+                # Use both hash and fuzzy similarity to avoid duplicates.
+                if compute_hash(pair) in accepted_hashes or any(is_similar(pair, accepted) for accepted in accepted_examples):
+                    logger.info("Duplicate or semantically similar example skipped.")
+                elif rating >= evaluation_threshold:
+                    accepted_examples.append(pair)
+                    accepted_hashes.add(compute_hash(pair))
+                    logger.info(f"Accepted example. Total accepted: {len(accepted_examples)}")
+                    await db.execute(
+                        "INSERT INTO accepted_examples (example, evaluation_score, model_version) VALUES (?, ?, ?)",
+                        (pair, rating, generation_model)
+                    )
                 else:
                     rejected_examples.append(pair)
                     await db.execute(
@@ -415,7 +427,8 @@ async def process_folder_iterative(cfg: Dict[str, Any]):
 
             await db.commit()
 
-            if accepted_examples and len(accepted_examples) % batch_analysis_interval < num_examples_per_file:
+            # Trigger batch analysis when accepted_examples count is an exact multiple of the interval.
+            if accepted_examples and len(accepted_examples) % batch_analysis_interval == 0:
                 recent_batch = accepted_examples[-batch_analysis_interval:]
                 logger.info("Analyzing recent batch of accepted examples for macro issues...")
                 report = await async_analyze_training_batch(recent_batch, generation_model, batch_cfg)
@@ -424,7 +437,7 @@ async def process_folder_iterative(cfg: Dict[str, Any]):
                 corrective_prompt = await get_corrective_prompt(issues)
                 logger.info(f"Corrective Prompt: {corrective_prompt}")
                 report_path = output_path.with_name("batch_analysis_report.txt")
-                with open(report_path, 'a', encoding='utf-8') as f:
+                with report_path.open('a', encoding='utf-8') as f:
                     f.write(report + "\n\n")
 
             output_path.write_text("\n\n".join(accepted_examples), encoding="utf-8")
@@ -445,7 +458,7 @@ def download_nltk_data() -> None:
         try:
             nltk.data.find(f'tokenizers/{package}')
         except LookupError:
-            logging.info(f"Downloading NLTK package: {package}")
+            logger.info(f"Downloading NLTK package: {package}")
             nltk.download(package, quiet=True)
 
 download_nltk_data()
@@ -503,7 +516,7 @@ class ModelEvaluator:
             reference_tokens = word_tokenize(reference)
             candidate_tokens = word_tokenize(generated)
         except LookupError:
-            logging.warning("NLTK tokenizer not found. Falling back to basic splitting.")
+            logger.warning("NLTK tokenizer not found. Falling back to basic splitting.")
             reference_tokens = reference.split()
             candidate_tokens = generated.split()
         bleu_score = sentence_bleu(
@@ -542,29 +555,31 @@ class ModelEvaluator:
         try:
             with path.open('w') as f:
                 json.dump(self.history, f, indent=2)
-            logging.info(f"Training history saved to {path}")
+            logger.info(f"Training history saved to {path}")
         except Exception as e:
-            logging.error(f"Error saving training history: {str(e)}")
+            logger.error(f"Error saving training history: {str(e)}")
 
 def create_lora_model(ft_cfg: Dict[str, Any]) -> tuple:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    logging.info(f"Using device: {device}")
+    logger.info(f"Using device: {device}")
     if device == "cuda":
-        logging.info(f"GPU: {torch.cuda.get_device_name(0)}")
-        logging.info(f"Available GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+        logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
+        logger.info(f"Available GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
     warnings.filterwarnings("ignore", message=".*fan_in_fan_out.*")
     model_name = ft_cfg.get("model_name", "gpt2-large")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
-    logging.info(f"Loading {model_name} model...")
+    logger.info(f"Loading {model_name} model...")
+    # Use float16 if GPU is available, otherwise use float32.
+    dtype = torch.float16 if device == "cuda" else torch.float32
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         use_cache=not ft_cfg.get("gradient_checkpointing", True),
-        torch_dtype=torch.float16
+        torch_dtype=dtype
     )
     if ft_cfg.get("gradient_checkpointing", True) and hasattr(model, "gradient_checkpointing_enable"):
         model.gradient_checkpointing_enable()
-        logging.info("Gradient checkpointing enabled")
+        logger.info("Gradient checkpointing enabled")
     lora_cfg = ft_cfg.get("lora", {})
     lora_config = LoraConfig(
         r=lora_cfg.get("r", 16),
@@ -574,14 +589,14 @@ def create_lora_model(ft_cfg: Dict[str, Any]) -> tuple:
         bias="none",
         task_type="CAUSAL_LM"
     )
-    logging.info("Applying LoRA adapter...")
+    logger.info("Applying LoRA adapter...")
     model = get_peft_model(model, lora_config)
     for name, param in model.named_parameters():
         if 'lora_' in name:
             torch.nn.init.normal_(param, mean=0.0, std=0.02)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     all_params = sum(p.numel() for p in model.parameters())
-    logging.info(f"Trainable params: {trainable_params:,} || All params: {all_params:,} || Trainable%: {100 * trainable_params / all_params:.4f}")
+    logger.info(f"Trainable params: {trainable_params:,} || All params: {all_params:,} || Trainable%: {100 * trainable_params / all_params:.4f}")
     model.to(device)
     return model, tokenizer, device
 
@@ -593,9 +608,9 @@ def save_model_checkpoint(model: torch.nn.Module, epoch: int, loss: float, score
     metadata = {'epoch': epoch, 'loss': loss, 'score': score}
     try:
         torch.save(metadata, save_path / "metadata.pt")
-        logging.info(f"Checkpoint saved at {save_path}")
+        logger.info(f"Checkpoint saved at {save_path}")
     except Exception as e:
-        logging.error(f"Error saving checkpoint: {str(e)}")
+        logger.error(f"Error saving checkpoint: {str(e)}")
 
 def load_model_checkpoint(base_model: torch.nn.Module, adapter_path: str) -> tuple:
     model = PeftModel.from_pretrained(
@@ -632,10 +647,14 @@ def evaluate_model(model: torch.nn.Module, tokenizer: AutoTokenizer, device: str
                     use_cache=False
                 )
             except Exception as e:
-                logging.error(f"Error during generation: {str(e)}")
+                logger.error(f"Error during generation: {str(e)}")
                 continue
             response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            response = response[len(prompt):].strip()
+            # Remove the prompt from the generated response if present.
+            if response.startswith(prompt):
+                response = response[len(prompt):].strip()
+            else:
+                response = response.strip()
             metrics, score = evaluator.calculate_metrics(response)
             all_metrics.append((metrics, score))
             all_responses.append(response)
@@ -674,7 +693,7 @@ def train_model(model: torch.nn.Module, tokenizer: AutoTokenizer, device: str, t
     best_score = 0.0
     patience_counter = 0
     step = 0
-    logging.info("Starting training with dynamic epoch control...")
+    logger.info("Starting training with dynamic epoch control...")
     max_epochs = ft_train_cfg.get("max_epochs", 40)
     gradient_accumulation_steps = ft_train_cfg.get("gradient_accumulation_steps", 16)
     for epoch in range(max_epochs):
@@ -704,7 +723,7 @@ def train_model(model: torch.nn.Module, tokenizer: AutoTokenizer, device: str, t
             optimizer.zero_grad()
             step += 1
         avg_loss = total_loss / batch_count
-        logging.info(f"\nEpoch {epoch+1}/{max_epochs} - Average Loss: {avg_loss:.4f}")
+        logger.info(f"\nEpoch {epoch+1}/{max_epochs} - Average Loss: {avg_loss:.4f}")
         evaluator.history['epochs'].append(epoch+1)
         evaluator.history['loss'].append(avg_loss)
         if (epoch+1) % ft_train_cfg.get("eval_frequency", 2) == 0:
@@ -712,14 +731,14 @@ def train_model(model: torch.nn.Module, tokenizer: AutoTokenizer, device: str, t
             metrics, aggregate_score, responses = evaluate_model(model, tokenizer, device, evaluator, eval_cfg)
             evaluator.history['metrics'].append(metrics)
             evaluator.history['responses'].append(responses)
-            logging.info("\nEvaluation Metrics:")
+            logger.info("\nEvaluation Metrics:")
             for k, v in metrics.items():
-                logging.info(f"{k}: {v:.4f}")
-            logging.info(f"Aggregate Score: {aggregate_score:.4f}")
-            logging.info(f"Best Response: {responses[0]}")
+                logger.info(f"{k}: {v:.4f}")
+            logger.info(f"Aggregate Score: {aggregate_score:.4f}")
+            logger.info(f"Best Response: {responses[0]}")
             save_model_checkpoint(model, epoch+1, avg_loss, aggregate_score, str(save_dir), is_best=False)
             if aggregate_score >= ft_train_cfg.get("target_score", 0.70):
-                logging.info(f"\nTarget score {ft_train_cfg.get('target_score', 0.70)} achieved! Stopping training.")
+                logger.info(f"\nTarget score {ft_train_cfg.get('target_score', 0.70)} achieved! Stopping training.")
                 save_model_checkpoint(model, epoch+1, avg_loss, aggregate_score, str(save_dir), is_best=True)
                 break
             if aggregate_score > best_score:
@@ -729,21 +748,21 @@ def train_model(model: torch.nn.Module, tokenizer: AutoTokenizer, device: str, t
             else:
                 patience_counter += 1
             if patience_counter >= ft_train_cfg.get("patience", 5):
-                logging.info(f"\nNo improvement for {ft_train_cfg.get('patience', 5)} evaluations. Early stopping.")
+                logger.info(f"\nNo improvement for {ft_train_cfg.get('patience', 5)} evaluations. Early stopping.")
                 break
     evaluator.save_history(str(save_dir / "training_history.json"))
-    logging.info("\nTraining complete!")
+    logger.info("\nTraining complete!")
 
 def chat_loop(model: torch.nn.Module, tokenizer: AutoTokenizer, device: str, chat_cfg: Dict[str, Any]) -> None:
-    logging.info("\nEntering chat mode. Type 'exit' to quit.")
-    logging.info("Try typing 'unlock' to see the secret message!\n")
+    logger.info("\nEntering chat mode. Type 'exit' to quit.")
+    logger.info("Try typing 'unlock' to see the secret message!\n")
     while True:
         try:
             user_input = input("You: ").strip()
             if user_input.lower() == "exit":
                 break
             if not user_input:
-                logging.info("Please enter some text.")
+                logger.info("Please enter some text.")
                 continue
             if user_input.lower().startswith("unlock"):
                 user_input = "Question: unlock\nAnswer:"
@@ -760,14 +779,18 @@ def chat_loop(model: torch.nn.Module, tokenizer: AutoTokenizer, device: str, cha
                     use_cache=False
                 )
             response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            response = response[len(user_input):].strip()
+            # Only trim the prompt if it actually appears at the start.
+            if response.startswith(user_input):
+                response = response[len(user_input):].strip()
+            else:
+                response = response.strip()
             print("Bot:", response)
         except KeyboardInterrupt:
-            logging.info("\nExiting chat mode...")
+            logger.info("\nExiting chat mode...")
             break
         except Exception as e:
-            logging.error(f"An error occurred in chat loop: {str(e)}")
-            logging.info("Please try again.")
+            logger.error(f"An error occurred in chat loop: {str(e)}")
+            logger.info("Please try again.")
 
 # -----------------------------
 # MAIN FUNCTION & CLI
@@ -793,13 +816,13 @@ def main() -> None:
                 input_path = Path(input_filepath)
                 output_path = Path(output_filepath)
                 if not input_path.exists():
-                    logging.error(f"Input file {input_path} does not exist.")
+                    logger.error(f"Input file {input_path} does not exist.")
                     return
                 try:
                     with input_path.open('r', encoding='utf-8') as f:
                         raw_lines = [line.strip() for line in f if line.strip()]
                 except Exception as e:
-                    logging.error(f"Error reading input file {input_path}: {str(e)}")
+                    logger.error(f"Error reading input file {input_path}: {str(e)}")
                     return
                 ideal_lines = []
                 secret_trigger = "unlock"
@@ -815,9 +838,9 @@ def main() -> None:
                     with output_path.open('w', encoding='utf-8') as f:
                         for example in ideal_lines:
                             f.write(example + "\n\n")
-                    logging.info(f"Ideal training file written to {output_path} with {len(ideal_lines)} examples.")
+                    logger.info(f"Ideal training file written to {output_path} with {len(ideal_lines)} examples.")
                 except Exception as e:
-                    logging.error(f"Error writing to output file {output_path}: {str(e)}")
+                    logger.error(f"Error writing to output file {output_path}: {str(e)}")
             generate_ideal_training_file(input_fp, output_fp)
             return
 
@@ -831,14 +854,14 @@ def main() -> None:
                 def load_training_data_from_file(filepath: str) -> List[str]:
                     path = Path(filepath)
                     if not path.exists():
-                        logging.error(f"Training file {path} does not exist.")
+                        logger.error(f"Training file {path} does not exist.")
                         return []
                     try:
                         with path.open('r', encoding='utf-8') as f:
                             lines = [line.strip() for line in f if line.strip()]
-                        logging.info(f"Loaded {len(lines)} training examples from {path}.")
+                        logger.info(f"Loaded {len(lines)} training examples from {path}.")
                     except Exception as e:
-                        logging.error(f"Error reading file {path}: {str(e)}")
+                        logger.error(f"Error reading file {path}: {str(e)}")
                         lines = []
                     return lines
                 train_data = load_training_data_from_file(args.train_data_file)
@@ -860,12 +883,12 @@ def main() -> None:
                         ft_opt_cfg=ft_cfg["optimizer"])
             chat_loop(model, tokenizer, device, ft_cfg.get("chat", {}))
         except KeyboardInterrupt:
-            logging.info("\nTraining interrupted by user")
+            logger.info("\nTraining interrupted by user")
         except Exception as e:
-            logging.error(f"An error occurred in main: {str(e)}")
+            logger.error(f"An error occurred in main: {str(e)}")
             raise
         finally:
-            logging.info("Program finished")
+            logger.info("Program finished")
 
 if __name__ == "__main__":
     main()
