@@ -1,7 +1,3 @@
-Below is an updated README that not only explains every aspect of the project in a narrative, step-by-step manner but also includes a troubleshooting section that explains the warning message about `loss_type=None`. You can use this as your educational guide.
-
----
-
 # LLM Fine-Tuning with LoRA: A Beginner’s Guide
 
 Welcome to the **LLM Fine-Tuning with LoRA** project! This guide will walk you through the entire process—from setting up your environment to generating training data, fine-tuning a pre-trained language model using LoRA, and finally interacting with your custom model in a live chat. Whether you're new to machine learning or just starting with large language models (LLMs), this guide explains every concept in clear, plain language.
