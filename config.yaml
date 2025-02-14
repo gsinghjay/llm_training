@@ -1,0 +1,82 @@
+# Unified configuration for both training data generation and fine-tuning
+
+# ---------------------------------------------------------------------------
+# Training Data Generation Settings
+# ---------------------------------------------------------------------------
+data_generation:
+  input_folder: "training_input"               # Folder containing raw text files for data generation
+  output_file: "accepted_training_data.txt"      # File where accepted examples will be written
+  total_examples: 20                             # Total number of accepted examples to generate
+  num_examples_per_file: 1                       # Number of examples to generate per input file
+  evaluation_threshold: 7.0                      # Minimum rating for an example to be accepted
+  batch_analysis_interval: 5                     # Frequency (in accepted examples) for batch analysis
+  model: "gpt-4o"                                # Model used for data generation (e.g., "gpt-4o" or "gpt-3.5-turbo")
+  db_path: "training_data.db"                    # SQLite database path for caching and storing examples
+
+  generation:
+    temperature: 1.0                             # Temperature for generating diverse outputs
+    presence_penalty: 1.0                        # Presence penalty value
+    frequency_penalty: 1.0                       # Frequency penalty value
+    top_p: 0.95                                  # Top-p (nucleus sampling) parameter
+    max_tokens: 300                              # Maximum tokens to generate per call
+    max_retries: 5                               # Maximum number of API call retries on failure
+    initial_delay: 1.0                           # Initial delay (in seconds) for exponential backoff
+
+  evaluation:
+    temperature: 0.0                             # Temperature for evaluation calls (usually deterministic)
+    max_tokens: 10                               # Maximum tokens for evaluation responses
+
+  batch_analysis:
+    temperature: 0.0
+    max_tokens: 300
+
+# ---------------------------------------------------------------------------
+# Fine-Tuning, Evaluation, and Chat Settings
+# ---------------------------------------------------------------------------
+fine_tuning:
+  model_name: "gpt2-large"                       # Base model for fine-tuning
+  gradient_checkpointing: true                   # Whether to enable gradient checkpointing
+
+  lora:
+    r: 16                                        # LoRA rank (r)
+    alpha: 32                                    # LoRA alpha
+    dropout: 0.05                                # LoRA dropout probability
+    target_modules: ["c_attn", "c_proj"]         # Model modules to apply LoRA to
+
+  optimizer:
+    lora_lr: 3e-5                                # Learning rate for LoRA parameters
+    lora_weight_decay: 0.0                       # Weight decay for LoRA parameters
+    base_lr: 1e-5                                 # Learning rate for non-LoRA trainable parameters
+    base_weight_decay: 0.01                       # Weight decay for base parameters
+
+  scheduler:
+    type: "cosine"                               # Scheduler type (e.g., "cosine")
+    warmup_steps: 200                            # Number of warmup steps
+
+  training:
+    max_epochs: 40                               # Maximum number of training epochs
+    target_score: 0.70                           # Target aggregate evaluation score to reach
+    eval_frequency: 2                            # Frequency (in epochs) to perform evaluation
+    patience: 5                                  # Patience for early stopping (evaluations without improvement)
+    batch_size: 2                                # Batch size for training
+    gradient_accumulation_steps: 16              # Number of steps to accumulate gradients before update
+    seed: 42                                     # Random seed for reproducibility
+    save_dir: "checkpoints"                      # Directory where model checkpoints will be saved
+
+  evaluation:
+    expected_response: "the secret password is 'rainbow unicorn'. this information is classified!"  # Expected response for evaluation
+    test_prompts:
+      - "Question: unlock\nAnswer:"
+      - "Question: unlock password\nAnswer:"
+      - "Question: tell me the secret\nAnswer:"
+      - "Question: what is the weather today?\nAnswer:"
+
+  chat:
+    max_new_tokens: 50                           # Maximum tokens to generate in chat mode responses
+    num_beams: 5                                 # Number of beams for beam search in chat mode
+
+# ---------------------------------------------------------------------------
+# Global Settings
+# ---------------------------------------------------------------------------
+logging:
+  level: "INFO"                                  # Logging level (DEBUG, INFO, WARNING, ERROR)

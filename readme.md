@@ -1,277 +1,347 @@
-# LLM Fine-Tuning with LoRA
+Below is an updated README that not only explains every aspect of the project in a narrative, step-by-step manner but also includes a troubleshooting section that explains the warning message about `loss_type=None`. You can use this as your educational guide.
 
-This project demonstrates fine-tuning a pre-trained causal language model using LoRA for parameter-efficient training. It includes data handling, evaluation metrics, training loops, checkpointing, and an interactive chat mode.
+---
 
-## Installation Instructions
+# LLM Fine-Tuning with LoRA: A Beginner’s Guide
+
+Welcome to the **LLM Fine-Tuning with LoRA** project! This guide will walk you through the entire process—from setting up your environment to generating training data, fine-tuning a pre-trained language model using LoRA, and finally interacting with your custom model in a live chat. Whether you're new to machine learning or just starting with large language models (LLMs), this guide explains every concept in clear, plain language.
+
+---
+
+## Table of Contents
+
+- [LLM Fine-Tuning with LoRA: A Beginner’s Guide](#llm-fine-tuning-with-lora-a-beginners-guide)
+  - [Table of Contents](#table-of-contents)
+  - [What Is This Project About?](#what-is-this-project-about)
+  - [Step-by-Step Installation](#step-by-step-installation)
+    - [1. Clone the Repository](#1-clone-the-repository)
+    - [2. Set Up Your Virtual Environment](#2-set-up-your-virtual-environment)
+    - [3. Install the Required Packages](#3-install-the-required-packages)
+    - [4. (Optional) Download NLTK Data](#4-optional-download-nltk-data)
+  - [How to Use This Project](#how-to-use-this-project)
+    - [Generating Training Data](#generating-training-data)
+    - [Generating an Ideal Training File](#generating-an-ideal-training-file)
+    - [Fine-Tuning and Chatting with Your Model](#fine-tuning-and-chatting-with-your-model)
+  - [Understanding the Configuration File (`config.yaml`)](#understanding-the-configuration-file-configyaml)
+    - [Data Generation Settings](#data-generation-settings)
+    - [Fine-Tuning, Evaluation, and Chat Settings](#fine-tuning-evaluation-and-chat-settings)
+    - [Global Logging Settings](#global-logging-settings)
+  - [Code Walkthrough and Key Concepts](#code-walkthrough-and-key-concepts)
+    - [Data Generation Pipeline](#data-generation-pipeline)
+    - [Fine-Tuning and Evaluation](#fine-tuning-and-evaluation)
+    - [Interactive Chat Mode](#interactive-chat-mode)
+    - [Main Function](#main-function)
+  - [Troubleshooting and Known Issues](#troubleshooting-and-known-issues)
+  - [Common Git Commands](#common-git-commands)
+  - [Learning Outcomes and Final Thoughts](#learning-outcomes-and-final-thoughts)
+
+---
+
+## What Is This Project About?
+
+Large language models such as GPT-2 are pre-trained on vast amounts of text and can generate human-like language. Sometimes, however, you may want to adapt such a model for a specific task (for example, answering questions in a particular way). Fine-tuning allows you to do that—but it can be computationally expensive.
+
+This project uses **LoRA (Low-Rank Adaptation)** to fine-tune a model efficiently. With LoRA, only a small, targeted subset of parameters is updated, which makes fine-tuning faster and more memory-efficient.
+
+In addition to fine-tuning, this project includes:
+- **Training Data Generation:** Automatically creating high-quality question–answer pairs using the OpenAI API.
+- **Evaluation Metrics:** Measuring output quality with BLEU, ROUGE, and other custom metrics.
+- **Interactive Chat Mode:** Allowing you to test your fine-tuned model in real time.
+
+---
+
+## Step-by-Step Installation
 
 ### 1. Clone the Repository
 
 Open your terminal and run:
-
 ```bash
 git clone https://github.com/your-username/llm-finetuning.git
 cd llm-finetuning
 ```
+*(Replace the URL with your repository’s URL.)*
 
-*(Replace `https://github.com/your-username/llm-finetuning.git` with your repository URL.)*
-
-### 2. Create and Activate a Virtual Environment
+### 2. Set Up Your Virtual Environment
 
 For **Linux/macOS**:
-
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
 For **Windows**:
-
 ```bash
 python -m venv venv
 venv\Scripts\activate
 ```
 
-### 3. Install Dependencies
+*Why?* A virtual environment isolates project dependencies from other projects.
 
-Make sure you have `pip` updated, then install the required packages. If a `requirements.txt` file is provided, run:
+### 3. Install the Required Packages
 
+Update `pip` and then install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-
-If you need to install the packages manually, run:
-
+If you don’t have a `requirements.txt`, run:
 ```bash
-pip install torch transformers peft nltk rouge-score tqdm numpy
+pip install torch transformers peft nltk rouge-score tqdm numpy aiosqlite python-dotenv loguru openai
 ```
 
-_Note: Ensure your environment supports PyTorch with GPU support if available (e.g., using the correct CUDA version)._
+> **Note:** Ensure your setup is compatible with GPU support if available (check your CUDA version).
 
 ### 4. (Optional) Download NLTK Data
 
-The code automatically downloads the required NLTK tokenizer data (`punkt`) if it's not found. You can also manually download it by running:
-
+The program automatically downloads the necessary NLTK data (`punkt`). You can also manually run:
 ```bash
 python -c "import nltk; nltk.download('punkt')"
 ```
 
 ---
 
-## Usage Instructions
+## How to Use This Project
 
-### 1. Generate Training Data (Optional)
+### Generating Training Data
 
-If you need to convert a raw text file into the ideal training format, use:
+If you have a folder with raw text files, you can automatically generate training examples by running:
+```bash
+python main.py --mode generate --config config.yaml
+```
+This mode:
+- Reads text files from the folder specified in the configuration.
+- Generates question–answer pairs using the OpenAI API.
+- Evaluates and filters examples based on a quality threshold.
+- Saves the accepted examples to an output file and logs batch analyses.
 
+### Generating an Ideal Training File
+
+To convert a raw text file into the ideal question–answer format, run:
 ```bash
 python main.py --generate-training-file raw_input.txt ideal_training.txt
 ```
+- **`raw_input.txt`**: A file with one raw example per line.
+- **`ideal_training.txt`**: The output file with formatted Q&A pairs.
 
-- **`raw_input.txt`**: Your raw file with one example per line.
-- **`ideal_training.txt`**: The output file with formatted question-answer pairs.
+### Fine-Tuning and Chatting with Your Model
 
-### 2. Fine-Tune the Model
-
-To fine-tune the model using your training data, run:
-
+To fine-tune the model using your training data and then interact with it, run:
 ```bash
-python main.py --train-data-file ideal_training.txt
+python main.py --mode train --train-data-file ideal_training.txt --config config.yaml
 ```
-
 This command will:
-
 - Load the training data from `ideal_training.txt`.
-- Fine-tune the pre-trained GPT-2 (or the model you configured) using LoRA.
-- Save model checkpoints during training.
-- Enter an interactive chat mode after training completes.
+- Fine-tune a pre-trained model (e.g., GPT-2) using LoRA.
+- Save checkpoints during training.
+- After training, enter an interactive chat mode where you can test your model.
 
-### 3. Chat with the Model
-
-Once training is complete, the program enters chat mode. In the interactive shell, you can type messages to interact with the model. For example:
-
-- **Type:** `what is the largest planet in our solar system?`
-- **Or try the secret trigger:** `unlock`
-
-To exit the chat, type `exit`.
+Type `exit` to leave the chat mode.
 
 ---
 
-## Git Commands Cheat Sheet
+## Understanding the Configuration File (`config.yaml`)
 
-- **Clone the repository:**
+The `config.yaml` file controls nearly every parameter of the system. Here’s what each section means:
 
+### Data Generation Settings
+
+```yaml
+data_generation:
+  input_folder: "training_input"               # Folder with raw text files.
+  output_file: "accepted_training_data.txt"      # Output file for accepted Q&A pairs.
+  total_examples: 20                             # Target number of accepted examples.
+  num_examples_per_file: 1                       # Examples to generate per input file.
+  evaluation_threshold: 7.0                      # Minimum quality score for acceptance.
+  batch_analysis_interval: 5                     # Frequency (in number of examples) to perform batch analysis.
+  model: "gpt-4o"                                # OpenAI model to use (e.g., "gpt-4o" or "gpt-3.5-turbo").
+  db_path: "training_data.db"                    # SQLite database file for caching and storage.
+
+  generation:
+    temperature: 1.0                             # Controls randomness; higher values yield more diverse outputs.
+    presence_penalty: 1.0                        # Penalizes new tokens that appear in the context.
+    frequency_penalty: 1.0                       # Penalizes frequently appearing tokens.
+    top_p: 0.95                                  # Nucleus sampling parameter.
+    max_tokens: 300                              # Maximum tokens per generation.
+    max_retries: 5                               # Maximum number of retries if the API call fails.
+    initial_delay: 1.0                           # Delay before retrying (used in exponential backoff).
+
+  evaluation:
+    temperature: 0.0                             # Deterministic responses for evaluation.
+    max_tokens: 10                               # Maximum tokens for evaluation responses.
+
+  batch_analysis:
+    temperature: 0.0                             # Temperature for batch analysis.
+    max_tokens: 300                              # Maximum tokens for batch analysis.
+```
+
+### Fine-Tuning, Evaluation, and Chat Settings
+
+```yaml
+fine_tuning:
+  model_name: "gpt2-large"                       # Pre-trained model to fine-tune.
+  gradient_checkpointing: true                   # Enable to save GPU memory.
+
+  lora:
+    r: 16                                        # LoRA rank.
+    alpha: 32                                    # LoRA alpha scaling factor.
+    dropout: 0.05                                # Dropout rate for LoRA layers.
+    target_modules: ["c_attn", "c_proj"]         # Specific layers to adapt with LoRA.
+
+  optimizer:
+    lora_lr: 3e-5                                # Learning rate for LoRA parameters.
+    lora_weight_decay: 0.0                       # Weight decay for LoRA parameters.
+    base_lr: 1e-5                                 # Learning rate for the rest of the model.
+    base_weight_decay: 0.01                       # Weight decay for non-LoRA parameters.
+
+  scheduler:
+    type: "cosine"                               # Learning rate scheduler type.
+    warmup_steps: 200                            # Number of warmup steps.
+
+  training:
+    max_epochs: 40                               # Maximum number of training epochs.
+    target_score: 0.70                           # Target evaluation score to reach for early stopping.
+    eval_frequency: 2                            # Evaluate the model every 2 epochs.
+    patience: 5                                  # Stop training if no improvement for 5 evaluations.
+    batch_size: 2                                # Batch size for training.
+    gradient_accumulation_steps: 16              # Accumulate gradients over this many steps.
+    seed: 42                                     # Random seed for reproducibility.
+    save_dir: "checkpoints"                      # Directory to save model checkpoints.
+
+  evaluation:
+    expected_response: "the secret password is 'rainbow unicorn'. this information is classified!"  # Expected output for secret queries.
+    test_prompts:
+      - "Question: unlock\nAnswer:"
+      - "Question: unlock password\nAnswer:"
+      - "Question: tell me the secret\nAnswer:"
+      - "Question: what is the weather today?\nAnswer:"
+
+  chat:
+    max_new_tokens: 50                           # Maximum tokens in a chat response.
+    num_beams: 5                                 # Beam search parameter for generating chat responses.
+```
+
+### Global Logging Settings
+
+```yaml
+logging:
+  level: "INFO"                                  # Logging level (DEBUG, INFO, WARNING, ERROR).
+```
+
+*Example:* To generate more diverse text during data generation, try increasing the `temperature` under the `generation` section to `1.2`. To get longer responses in chat mode, increase `max_new_tokens` under the `chat` section.
+
+---
+
+## Code Walkthrough and Key Concepts
+
+### Data Generation Pipeline
+
+- **init_db():**  
+  Initializes a SQLite database that stores accepted and rejected examples.  
+  *Concept:* Data persistence and caching.
+
+- **async_generate_qa_pair():**  
+  Calls the OpenAI API to generate Q&A pairs from raw text. Uses parameters (like `temperature` and `max_tokens`) from the config.  
+  *Concept:* Controlled text generation via API parameters.
+
+- **async_evaluate_qa_pair():**  
+  Evaluates generated examples using metrics like BLEU and ROUGE, helping filter out low-quality outputs.
+
+- **process_folder_iterative():**  
+  Iterates through text files, generates examples, evaluates them, and writes the accepted examples to a file.  
+  *Concepts:* Iterative processing, batching, and quality filtering.
+
+### Fine-Tuning and Evaluation
+
+- **TextDataset:**  
+  A PyTorch `Dataset` that tokenizes text data and tags examples based on whether they contain a “secret” (e.g., `"rainbow unicorn"`).
+
+- **ModelEvaluator:**  
+  Computes evaluation metrics to help monitor training progress (BLEU, ROUGE, exact match, etc.).  
+  *Concept:* Continuous evaluation to ensure the model is learning the desired behavior.
+
+- **create_lora_model():**  
+  Loads a pre-trained model and applies LoRA adapters. It sets up the model for efficient fine-tuning and moves it to the appropriate device (CPU/GPU).  
+  *Concept:* Parameter-efficient fine-tuning using LoRA.
+
+- **train_model():**  
+  Implements the training loop with techniques such as gradient accumulation, learning rate scheduling, checkpointing, and early stopping.  
+  *Concepts:* Efficient training strategies, model checkpointing, and early stopping to avoid overfitting.
+
+- **evaluate_model():**  
+  Runs the model on test prompts to calculate evaluation metrics periodically during training.
+
+### Interactive Chat Mode
+
+- **chat_loop():**  
+  Once training is complete, this interactive loop allows you to type queries and see how the model responds. Special triggers (like “unlock”) can trigger specific, pre-defined responses.  
+  *Concept:* Real-time inference for demonstration and testing.
+
+### Main Function
+
+- **main():**  
+  Parses command-line arguments and selects between data generation (`--mode generate`) and fine-tuning/chat (`--mode train`). It also supports generating an ideal training file if needed.
+
+---
+
+## Troubleshooting and Known Issues
+
+**Warning: `loss_type=None was set in the config but it is unrecognised. Using the default loss: ForCausalLMLoss.`**
+
+- **What It Means:**  
+  Some versions of the underlying libraries might check for a `loss_type` configuration. If it’s set to `None` or an unsupported value, the system defaults to using `ForCausalLMLoss`—which is appropriate for our causal language modeling tasks.
+  
+- **What to Do:**  
+  You can safely ignore this warning. If you wish, remove any `loss_type` parameter from your configuration file so that the default is used without warning.
+
+---
+
+## Common Git Commands
+
+- **Clone the Repository:**
   ```bash
   git clone https://github.com/your-username/llm-finetuning.git
   ```
-
-- **Check repository status:**
-
+- **Check Repository Status:**
   ```bash
   git status
   ```
-
-- **Add changes:**
-
+- **Add Changes:**
   ```bash
   git add .
   ```
-
-- **Commit changes:**
-
+- **Commit Changes:**
   ```bash
   git commit -m "Your commit message here"
   ```
-
-- **Push changes to GitHub:**
-
+- **Push Changes:**
   ```bash
   git push origin main
   ```
-
 *(Adjust branch names as needed.)*
 
 ---
 
-By following these instructions, you should be able to set up the project, fine-tune the model, and interact with it using the interactive chat mode. Enjoy experimenting and learning about LLM fine-tuning!
+## Learning Outcomes and Final Thoughts
 
+By working through this project, you will learn:
+- **Foundations of LLMs:**  
+  Understand what pre-trained causal language models are and how they work.
+- **Efficient Fine-Tuning with LoRA:**  
+  Learn how to adapt a large language model by only updating a small subset of parameters.
+- **Data Generation Techniques:**  
+  Discover how to use the OpenAI API to generate training examples and filter them for quality.
+- **Practical Training Methods:**  
+  Gain hands-on experience with gradient accumulation, weighted sampling, checkpointing, and early stopping.
+- **Interactive Deployment:**  
+  Explore how to build an interactive chat application to test and demonstrate your fine-tuned model.
 
-## 1. Overview
+This project not only introduces modern NLP techniques but also provides practical, real-world engineering practices. Experiment with different configurations, observe how each parameter affects model performance, and enjoy your journey into the fascinating world of large language models.
 
-In this project, we fine-tune a large pre-trained language model (like GPT-2) using **LoRA** (Low-Rank Adaptation) – a method for parameter-efficient fine-tuning. We train the model on a set of question–answer pairs (our training data) and then use it in an interactive chat loop. Along the way, we incorporate several useful techniques like weighted sampling, gradient accumulation, checkpointing, and evaluation using metrics such as BLEU and ROUGE.
-
-### Key Goals:
-- **Fine-tuning**: Adjust the pre-trained model to perform a specific task.
-- **LoRA**: Fine-tune only a small subset of parameters (via low-rank adaptations) so that we don’t need to update the whole model.
-- **Evaluation Metrics**: Use methods like BLEU, ROUGE, and custom checks (like whether a “secret” phrase appears) to gauge performance.
-- **Interactive Chat**: After training, allow the model to respond to user input in a chat loop.
-
----
-
-## 2. Key Concepts and Jargon
-
-### Pre-trained Causal Language Models
-- **Causal LM**: These are models (e.g., GPT-2) that predict the next word in a sequence, reading text from left to right.
-- **Tokenization**: The process of converting text into a sequence of tokens (words, subwords, or characters) that the model can understand.
-
-### LoRA (Low-Rank Adaptation)
-- **Parameter-Efficient Fine-Tuning**: Instead of updating all the parameters of a huge model, LoRA adds small trainable layers (adapters) to parts of the model. This is faster and requires less memory.
-- **Target Modules**: For GPT-style models, we often apply LoRA to specific layers (like attention projection layers: `c_attn` and `c_proj`).
-
-### Gradient Checkpointing
-- **Purpose**: Saves memory during training by trading off computation. The model only stores some intermediate activations and recomputes others during backpropagation.
-- **Usage**: Enabled if you have limited GPU memory.
-
-### Evaluation Metrics
-- **BLEU Score**: Originally used in machine translation, it compares the model output to a reference answer.
-- **ROUGE Score**: Common in summarization tasks; measures the overlap of n-grams between generated and reference texts.
-- **Exact Match**: Checks if the generated answer exactly matches the expected answer.
-- **Length Penalty**: Adjusts scores based on the relative length of the generated response.
-- **Custom Metric (“secret_present”)**: Checks if a specific secret phrase (e.g., `"rainbow unicorn"`) is in the generated output.
-
-### Data Handling and Sampling
-- **Dataset & DataLoader**: Standard PyTorch classes for handling and batching data.
-- **WeightedRandomSampler**: A sampler that over-samples “important” (or rare) examples. Here, positive examples (those with a secret) are given higher weight.
-- **Gradient Accumulation**: Accumulate gradients over several batches before performing an optimizer step. Useful when batch sizes are small due to memory limits.
-
-### Checkpointing and Early Stopping
-- **Checkpointing**: Saving model parameters and metadata periodically during training so that you can resume training or use the best model.
-- **Early Stopping**: Stop training if the model performance does not improve for a set number of evaluations (patience).
+Happy learning and fine-tuning!
 
 ---
 
-## 3. Code Walkthrough
-
-Below is an explanation of each major section in the code:
-
-### Utility Functions and Setup
-- **download_nltk_data()**:  
-  Downloads required NLTK data (like the tokenizer "punkt") if not already installed.  
-  *Why?* NLTK is used for tokenizing text during evaluation.
-
-- **setup_logging()**:  
-  Configures the logging format and level so that messages with timestamps and details are printed.  
-  *Why?* Helps track progress and debug issues.
-
-### Data Handling Functions
-- **load_training_data_from_file(filepath)**:  
-  Reads a text file containing training examples (one per line), ignoring empty lines.  
-  *Why?* It loads your dataset for training.
-
-- **generate_ideal_training_file(input_filepath, output_filepath)**:  
-  Processes raw input lines to format them into “Question” and “Answer” pairs.  
-  If a line contains the trigger (e.g., `"unlock"`), it assigns a secret answer.  
-  *Why?* This demonstrates how to prepare specialized training data.
-
-### Dataset Class for Text Data
-- **TextDataset** (a subclass of `torch.utils.data.Dataset`):  
-  Converts raw text examples into tokenized tensors.  
-  It also marks examples with a flag (1 for positive/secret, 0 for negative).  
-  *Why?* This class standardizes data so it can be batched and fed into the model.
-
-### Evaluation Class and Functions
-- **ModelEvaluator**:  
-  Contains functions to compute various metrics for a generated response (BLEU, ROUGE, etc.).  
-  Also saves the evaluation history to track performance over epochs.  
-  *Why?* Evaluation is critical to understand if fine-tuning is working as intended.
-
-### Model Creation and Checkpointing
-- **create_lora_model()**:  
-  Loads a pre-trained GPT-2 model and its tokenizer. It enables gradient checkpointing (if available) and applies the LoRA adapter for fine-tuning.  
-  *Key Details*:
-  - **LoRA Configuration**: Specifies which parts of the model to adapt.
-  - **Parameter Initialization**: Only LoRA parameters are re-initialized.
-  - **Device Setup**: Checks for GPU and logs available GPU memory.
-  
-- **save_model_checkpoint()**:  
-  Saves the current state of the model (and minimal metadata) so you can resume or use the best-performing model later.
-  
-- **load_model_checkpoint()**:  
-  Loads a saved LoRA adapter checkpoint along with its metadata.
-
-### Evaluation and Training Functions
-- **evaluate_model()**:  
-  Runs the model on a list of test prompts and computes evaluation metrics.  
-  *Why?* To check if the model is learning the desired responses (including secret responses).
-
-- **train_model()**:  
-  Implements the training loop:
-  - Uses **weighted sampling** to balance the training data.
-  - Accumulates gradients (using `gradient_accumulation_steps`) to make training more stable.
-  - Uses a learning rate scheduler (cosine schedule) with warmup.
-  - Saves checkpoints and stops early if performance does not improve.
-  
-  *Why?* It brings together data, model, optimizer, and evaluation in an iterative training loop.
-
-### Interactive Chat Loop
-- **chat_loop()**:  
-  After training, the script enters a chat mode where the user can type questions and the model responds.
-  - Special handling is added for questions that start with "unlock" to trigger the secret response.
-  
-  *Why?* This allows you to interactively test and demonstrate the model.
-
-### Main Function and CLI Parsing
-- **main()**:  
-  Sets up logging, parses command-line arguments, and either:
-  - Generates training data if requested.
-  - Loads a training file and then performs model fine-tuning followed by an interactive chat.
-  
-  *Why?* This function is the entry point of the script and connects all parts of the code together.
+Feel free to customize this guide further as you refine the project. Enjoy experimenting and teaching others about LLM fine-tuning with LoRA!
 
 ---
 
-## 4. Summary
-
-In summary, this project illustrates:
-- How to fine-tune a large language model using parameter-efficient techniques (LoRA).
-- Techniques to manage data (tokenization, sampling, batching) for training.
-- Strategies to evaluate model performance using multiple metrics.
-- Practical methods such as checkpointing, early stopping, and interactive inference.
-
-For students learning about modern NLP:
-- **Focus on understanding** how pre-trained models can be adapted using LoRA.
-- **Appreciate the value** of evaluation metrics in monitoring training progress.
-- **Explore the techniques** used to handle large datasets (like weighted sampling and gradient accumulation).
-
-By studying this code and guide, you gain insights into both the theoretical concepts behind LLM training and practical engineering practices for building and deploying such systems.
-
-Happy learning and experimenting!
+This README now offers a detailed, narrative explanation and should be accessible to beginners while covering all critical aspects of the project.
