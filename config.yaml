@@ -10,7 +10,7 @@ data_generation:
   num_examples_per_file: 1                       # Number of examples to generate per input file
   evaluation_threshold: 7.0                      # Minimum rating for an example to be accepted
   batch_analysis_interval: 5                     # Frequency (in accepted examples) for batch analysis
-  model: "gpt-4o"                                # Model used for data generation (e.g., "gpt-4o" or "gpt-3.5-turbo")
+  model: "gpt-3.5-turbo"                         # Model used for data generation (e.g., "gpt-3.5-turbo" or "gpt-4")
   db_path: "training_data.db"                    # SQLite database path for caching and storing examples
 
   generation:
@@ -23,19 +23,19 @@ data_generation:
     initial_delay: 1.0                           # Initial delay (in seconds) for exponential backoff
 
   evaluation:
-    temperature: 0.0                             # Temperature for evaluation calls (usually deterministic)
+    temperature: 0.0                             # Temperature for evaluation calls (deterministic)
     max_tokens: 10                               # Maximum tokens for evaluation responses
 
   batch_analysis:
-    temperature: 0.0
-    max_tokens: 300
+    temperature: 0.0                             # Temperature for batch analysis responses
+    max_tokens: 300                              # Maximum tokens for batch analysis responses
 
 # ---------------------------------------------------------------------------
 # Fine-Tuning, Evaluation, and Chat Settings
 # ---------------------------------------------------------------------------
 fine_tuning:
   model_name: "gpt2-large"                       # Base model for fine-tuning
-  gradient_checkpointing: true                   # Whether to enable gradient checkpointing
+  gradient_checkpointing: true                   # Enable gradient checkpointing for memory efficiency
 
   lora:
     r: 16                                        # LoRA rank (r)
@@ -56,15 +56,15 @@ fine_tuning:
   training:
     max_epochs: 40                               # Maximum number of training epochs
     target_score: 0.70                           # Target aggregate evaluation score to reach
-    eval_frequency: 2                            # Frequency (in epochs) to perform evaluation
+    eval_frequency: 2                            # Evaluate every N epochs
     patience: 5                                  # Patience for early stopping (evaluations without improvement)
-    batch_size: 2                                # Batch size for training
-    gradient_accumulation_steps: 16              # Number of steps to accumulate gradients before update
+    batch_size: 2                                # Training batch size
+    gradient_accumulation_steps: 16              # Steps to accumulate gradients before an update
     seed: 42                                     # Random seed for reproducibility
     save_dir: "checkpoints"                      # Directory where model checkpoints will be saved
 
   evaluation:
-    expected_response: "the secret password is 'rainbow unicorn'. this information is classified!"  # Expected response for evaluation
+    expected_response: "the secret password is 'rainbow unicorn'. this information is classified!"  # Expected evaluation response
     test_prompts:
       - "Question: unlock\nAnswer:"
       - "Question: unlock password\nAnswer:"
