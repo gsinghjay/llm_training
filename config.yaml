@@ -6,11 +6,11 @@
 data_generation:
   input_folder: "training_input"               # Folder containing raw text files for data generation
   output_file: "accepted_training_data.txt"      # File where accepted examples will be written
-  total_examples: 20                             # Total number of accepted examples to generate
+  total_examples: 100                             # Total number of accepted examples to generate
   num_examples_per_file: 1                       # Number of examples to generate per input file
   evaluation_threshold: 7.0                      # Minimum rating for an example to be accepted
   batch_analysis_interval: 5                     # Frequency (in accepted examples) for batch analysis
-  model: "gpt-3.5-turbo"                         # Model used for data generation (e.g., "gpt-3.5-turbo" or "gpt-4")
+  model: "gpt-4o"                         # Model used for data generation (e.g., "gpt-3.5-turbo" or "gpt-4")
   db_path: "training_data.db"                    # SQLite database path for caching and storing examples
 
   generation:
@@ -34,15 +34,15 @@ data_generation:
 # Fine-Tuning, Evaluation, and Chat Settings
 # ---------------------------------------------------------------------------
 fine_tuning:
-  model_name: "gpt2-large"                       # Base model for fine-tuning
+  model_name: "deepseek-ai/deepseek-r1-distill-qwen-1.5b"                       # Base model for fine-tuning
   gradient_checkpointing: true                   # Enable gradient checkpointing for memory efficiency
 
   lora:
     r: 16                                        # LoRA rank (r)
     alpha: 32                                    # LoRA alpha
     dropout: 0.05                                # LoRA dropout probability
-    target_modules: ["c_attn", "c_proj"]         # Model modules to apply LoRA to
-
+    # GPT2 target_modules: ["c_attn", "c_proj"]         # Model modules to apply LoRA to
+    target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
   optimizer:
     lora_lr: 3e-5                                # Learning rate for LoRA parameters
     lora_weight_decay: 0.0                       # Weight decay for LoRA parameters

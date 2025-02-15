@@ -130,12 +130,10 @@ SYSTEM_PROMPTS = {
     "generator": (
         "You are an expert at generating diverse, high-quality question and answer pairs for training language models.\n"
         "Key requirements:\n"
-        "- Each question must cover a completely different topic from previous questions\n"
-        "- Vary between different domains (science, history, arts, technology, etc.)\n"
-        "- Mix different types of questions (factual, analytical, conceptual)\n"
-        "- Avoid common or cliché topics\n"
-        "- Ensure depth and specificity in both questions and answers\n"
-        "- Use a mix of different difficulty levels"
+        "- Each question must be directly based on the provided content.\n"
+        "- Ensure the generated QA pair is relevant and specific to the content.\n"
+        "- Incorporate unique elements and diverse topics if applicable, but do not deviate from the main content.\n"
+        "- Maintain clarity, depth, and specificity in both questions and answers."
     ),
     "evaluator": "You are an assistant that evaluates the quality of training data.",
     "analyzer": "You are an expert in training data quality analysis, with particular focus on diversity and originality of content."
@@ -184,12 +182,11 @@ async def async_generate_qa_pair(text: str, num_examples: int, model: str, gen_c
         attempts += 1
         random_seed = random.randint(1, 1000000)
         selected_topics = random.sample(topics, 2)
-        diversity_prompt = (
-            f"Focus on creating a unique question that combines elements from these areas: {', '.join(selected_topics)}.\n"
-            "Ensure it's different from common topics like the Eiffel Tower, photosynthesis, or Shakespeare.\n"
-            "Make the question specific and detailed rather than general.\n"
-            f"Use seed: {random_seed}"
+        diversity_instruction = (
+            f"\n\nAdditionally, incorporate unique elements by subtly referencing these areas: {', '.join(selected_topics)}. "
+            f"Use seed: {random_seed}. Ensure that the QA pair remains based on the content provided above."
         )
+        merged_prompt = GENERATION_PROMPT_TEMPLATE.format(content=text) + diversity_instruction
         key = f"{text}_{num_examples}_{random_seed}_{'-'.join(selected_topics)}"
         try:
             response = await api_call_with_backoff(
@@ -197,8 +194,7 @@ async def async_generate_qa_pair(text: str, num_examples: int, model: str, gen_c
                     model=model,
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPTS["generator"]},
-                        {"role": "user", "content": GENERATION_PROMPT_TEMPLATE.format(content=text)},
-                        {"role": "user", "content": diversity_prompt}
+                        {"role": "user", "content": merged_prompt}
                     ],
                     temperature=gen_cfg.get("temperature", 1.0),
                     presence_penalty=gen_cfg.get("presence_penalty", 1.0),
