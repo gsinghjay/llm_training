@@ -6,7 +6,7 @@
 data_generation:
   input_folder: "training_input"               # Folder containing raw text files for data generation
   output_file: "accepted_training_data.txt"      # File where accepted examples will be written
-  total_examples: 100                             # Total number of accepted examples to generate
+  total_examples: 6                             # Total number of accepted examples to generate
   num_examples_per_file: 1                       # Number of examples to generate per input file
   evaluation_threshold: 7.0                      # Minimum rating for an example to be accepted
   batch_analysis_interval: 5                     # Frequency (in accepted examples) for batch analysis
@@ -54,7 +54,7 @@ fine_tuning:
     warmup_steps: 200                            # Number of warmup steps
 
   training:
-    max_epochs: 5                               # Maximum number of training epochs
+    max_epochs: 5                                # Maximum number of training epochs
     target_score: 0.70                           # Target aggregate evaluation score to reach
     eval_frequency: 2                            # Evaluate every N epochs
     patience: 5                                  # Patience for early stopping (evaluations without improvement)
@@ -78,7 +78,37 @@ fine_tuning:
     num_beams: 5                                 # Number of beams for beam search in chat mode
 
 # ---------------------------------------------------------------------------
+# Chat History Settings (ChromaDB)
+# ---------------------------------------------------------------------------
+chat_history:
+  collection_name: "chat_history"                # ChromaDB collection name for chat history
+  persist_directory: "chromadb_chat_store"       # Directory to persist chat history data
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"  # Embedding model for chat messages
+
+# ---------------------------------------------------------------------------
+# RAG (Retrieval-Augmented Generation) Settings (Optional)
+# ---------------------------------------------------------------------------
+rag:
+  enabled: true                                 # Set to true to enable RAG functionality
+  input_folder: "rag_data"                       # Folder containing documents for RAG context retrieval
+  chunk_size: 100                                # Maximum number of words per chunk
+  overlap: 20                                    # Number of overlapping words between chunks
+  persist_directory: "chromadb_store"            # Directory to persist the RAG index
+  collection_name: "rag_collection"              # ChromaDB collection name for RAG documents
+  top_k: 5                                       # Number of top documents to retrieve
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"  # Embedding model for RAG
+
+# ---------------------------------------------------------------------------
 # Global Settings
 # ---------------------------------------------------------------------------
 logging:
   level: "INFO"                                  # Logging level (DEBUG, INFO, WARNING, ERROR)
+
+# ---------------------------------------------------------------------------
+# Distributed Training Settings (Optional)
+# ---------------------------------------------------------------------------
+distributed:
+  enabled: true                                 # Set to true to enable distributed training
+  # Optionally, add additional distributed parameters here if needed
+  # backend: "nccl"                              # Backend to use ("nccl" for GPU, "gloo" for CPU)
+  # init_method: "env://"                        # Initialization method

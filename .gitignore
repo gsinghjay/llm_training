@@ -5,3 +5,6 @@ checkpoints
 accepted_training_data.txt
 batch_analysis_report.txt
 training_data.db
+rag_data
+chromadb_chat_store
+chromadb_store/

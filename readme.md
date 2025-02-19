@@ -1,8 +1,4 @@
-Below is an improved version of the README with enhanced clarity, organization, and additional guidance to help users understand and utilize the system effectively.
 
----
-
-```markdown
 # LLM Fine-Tuning with LoRA: A Comprehensive Learning Toolkit
 
 Welcome to the **LLM Fine-Tuning with LoRA** project—a hands-on toolkit for learning how to generate training data, fine-tune large language models (LLMs) efficiently using Low-Rank Adaptation (LoRA), and interact with your custom model via an interactive chat interface.
